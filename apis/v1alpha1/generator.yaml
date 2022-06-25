@@ -43,7 +43,6 @@ resources:
       terminal_codes:
         - InvalidQueryParameter
         - ValidationError
-        -  
 model_name: amp 
 
 
