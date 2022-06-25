@@ -27,3 +27,85 @@ var (
 	_ = &aws.JSONValue{}
 	_ = ackv1alpha1.AWSAccountID("")
 )
+
+// Represents the properties of an alert manager definition.
+type AlertManagerDefinitionDescription struct {
+	CreatedAt *metav1.Time `json:"createdAt,omitempty"`
+	// The alert manager definition data.
+	Data       []byte       `json:"data,omitempty"`
+	ModifiedAt *metav1.Time `json:"modifiedAt,omitempty"`
+	// Represents the status of a definition.
+	Status *AlertManagerDefinitionStatus_SDK `json:"status,omitempty"`
+}
+
+// Represents the status of a definition.
+type AlertManagerDefinitionStatus_SDK struct {
+	// State of an alert manager definition.
+	StatusCode   *string `json:"statusCode,omitempty"`
+	StatusReason *string `json:"statusReason,omitempty"`
+}
+
+// Represents a description of the rule groups namespace.
+type RuleGroupsNamespaceDescription struct {
+	CreatedAt  *metav1.Time `json:"createdAt,omitempty"`
+	ModifiedAt *metav1.Time `json:"modifiedAt,omitempty"`
+	// The list of tags assigned to the resource.
+	Tags map[string]*string `json:"tags,omitempty"`
+}
+
+// Represents the status of a namespace.
+type RuleGroupsNamespaceStatus struct {
+	StatusReason *string `json:"statusReason,omitempty"`
+}
+
+// Represents a summary of the rule groups namespace.
+type RuleGroupsNamespaceSummary struct {
+	CreatedAt  *metav1.Time `json:"createdAt,omitempty"`
+	ModifiedAt *metav1.Time `json:"modifiedAt,omitempty"`
+	// The list of tags assigned to the resource.
+	Tags map[string]*string `json:"tags,omitempty"`
+}
+
+// Stores information about a field passed inside a request that resulted in
+// an exception.
+type ValidationExceptionField struct {
+	Message *string `json:"message,omitempty"`
+	Name    *string `json:"name,omitempty"`
+}
+
+// Represents the properties of a workspace.
+type WorkspaceDescription struct {
+	// A user-assigned workspace alias.
+	Alias *string `json:"alias,omitempty"`
+	// An ARN identifying a Workspace.
+	ARN                *string      `json:"arn,omitempty"`
+	CreatedAt          *metav1.Time `json:"createdAt,omitempty"`
+	PrometheusEndpoint *string      `json:"prometheusEndpoint,omitempty"`
+	// Represents the status of a workspace.
+	Status *WorkspaceStatus_SDK `json:"status,omitempty"`
+	// The list of tags assigned to the resource.
+	Tags map[string]*string `json:"tags,omitempty"`
+	// A workspace ID.
+	WorkspaceID *string `json:"workspaceID,omitempty"`
+}
+
+// Represents the status of a workspace.
+type WorkspaceStatus_SDK struct {
+	// State of a workspace.
+	StatusCode *string `json:"statusCode,omitempty"`
+}
+
+// Represents a summary of the properties of a workspace.
+type WorkspaceSummary struct {
+	// A user-assigned workspace alias.
+	Alias *string `json:"alias,omitempty"`
+	// An ARN identifying a Workspace.
+	ARN       *string      `json:"arn,omitempty"`
+	CreatedAt *metav1.Time `json:"createdAt,omitempty"`
+	// Represents the status of a workspace.
+	Status *WorkspaceStatus_SDK `json:"status,omitempty"`
+	// The list of tags assigned to the resource.
+	Tags map[string]*string `json:"tags,omitempty"`
+	// A workspace ID.
+	WorkspaceID *string `json:"workspaceID,omitempty"`
+}

@@ -1,8 +1,50 @@
 ignore:
-  field_paths: null
+  field_paths:
+    - CreateWorkspaceInput.ClientToken
   operations: null
   resource_names:
-  - Workspace
   - RuleGroupsNamespace
-  - AlertManagerDefinition
+  # comment when you want to create the resource 
+  # - AlertManagerDefinition
+resources:
+  Workspace:
+    fields:
+      Tags:
+        compare:
+          is_ignored: True
+    update_operation:
+      custom_method_name: customUpdateWorkspace
+    hooks:
+      delta_pre_compare:
+        code: customPreCompare(delta, a, b)
+      sdk_create_post_set_output:
+        # Add resync for read one for workspace
+        template_path: hooks/workspace/sdk_create_post_set_output.go.tpl
+  AlertManagerDefinition:
+    fields:
+      workspaceID:
+        is_required: true
+        is_primary_key: true 
+        is_immutable: true
+      data:
+        is_required: true
+    update_operation:
+      custom_method_name: customUpdateAlertManagerDefinition
+    hooks:
+      sdk_create_post_build_request:
+        code: customSetAlermManagerDefinitionInput(input)
+      sdk_create_post_set_output:
+        template_path: hooks/alert_manager_definition/sdk_create_post_set_output.go.tpl
+      sdk_read_one_pre_set_output:
+        template_path: hooks/alert_manager_definition/sdk_read_one_pre_set_output.go.tpl
+      sdk_read_one_post_set_output:
+        template_path: hooks/alert_manager_definition/sdk_read_one_post_set_output.go.tpl
+    exceptions:
+      terminal_codes:
+        - InvalidQueryParameter
+        - ValidationError
+        -  
 model_name: amp 
+
+
+
