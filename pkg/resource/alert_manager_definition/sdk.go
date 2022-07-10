@@ -368,8 +368,7 @@ func (rm *resourceManager) terminalAWSError(err error) bool {
 	}
 	switch awsErr.Code() {
 	case "InvalidQueryParameter",
-		"ValidationError",
-		"":
+		"ValidationError":
 		return true
 	default:
 		return false
