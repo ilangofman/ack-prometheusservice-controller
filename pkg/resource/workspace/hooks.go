@@ -26,10 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-var (
-	ErrWorkspaceCreating = errors.New("Workspace in 'CREATING' state, cannot be modified or deleted")
-)
-
 // workspaceCreating returns true if the supplied workspace is in the process
 // of being created
 func workspaceCreating(r *resource) bool {
@@ -49,7 +45,8 @@ func workspaceActive(r *resource) bool {
 	return ws == string(v1alpha1.WorkspaceStatusCode_ACTIVE)
 }
 
-// customUpdateWorkspace ...
+// customUpdateWorkspace patches each of the resource properties in the backend AWS
+// service API and returns a new resource with updated fields.
 func (rm *resourceManager) customUpdateWorkspace(
 	ctx context.Context,
 	desired *resource,
@@ -68,9 +65,9 @@ func (rm *resourceManager) customUpdateWorkspace(
 
 	rm.setStatusDefaults(ko)
 
-	// Check if the state is active before updated
+	// Check if the state is active before updating
 	if !workspaceActive(latest) {
-		msg := "Cannot update workspace as current status=" + string(*latest.ko.Status.Status.StatusCode)
+		msg := "Cannot update workspace as it is not active, current status=" + string(*latest.ko.Status.Status.StatusCode)
 		ackcondition.SetSynced(desired, corev1.ConditionFalse, &msg, nil)
 		return desired, ackrequeue.NeededAfter(
 			errors.New(msg),
@@ -109,20 +106,17 @@ func (rm *resourceManager) updateWorkspaceTags(
 
 	added, removed, updated := compareMaps(latest.ko.Spec.Tags, desired.ko.Spec.Tags)
 
-	// There is no api call to update tags, so we need to remove them and add them later
-	// with their new values.
-	if len(removed)+len(updated) > 0 {
+	if len(removed) > 0 {
 		removeTags := []*string{}
-		for k := range updated {
-			removeTags = append(removeTags, &k)
+		for i := range removed {
+			removeTags = append(removeTags, &removed[i])
 		}
-		for _, k := range removed {
-			removeTags = append(removeTags, &k)
-		}
+
 		input := &svcsdk.UntagResourceInput{
 			ResourceArn: (*string)(desired.ko.Status.ACKResourceMetadata.ARN),
 			TagKeys:     removeTags,
 		}
+
 		_, err = rm.sdkapi.UntagResourceWithContext(ctx, input)
 		rm.metrics.RecordAPICall("UPDATE", "UntagResource", err)
 		if err != nil {
