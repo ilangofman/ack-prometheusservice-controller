@@ -1,9 +1,10 @@
 ignore:
   field_paths:
     - CreateWorkspaceInput.ClientToken
+    - CreateAlertManagerDefinitionInput.ClientToken
   operations: null
   resource_names:
-  - RuleGroupsNamespace
+    - RuleGroupsNamespace
   # comment when you want to create the resource 
   # - AlertManagerDefinition
 resources:
@@ -18,21 +19,35 @@ resources:
       delta_pre_compare:
         code: customPreCompare(delta, a, b)
       sdk_create_post_set_output:
-        # Add resync for read one for workspace
         template_path: hooks/workspace/sdk_create_post_set_output.go.tpl
   AlertManagerDefinition:
+    tags:
+      ignore: true
     fields:
       workspaceID:
         is_required: true
         is_primary_key: true 
         is_immutable: true
       data:
-        is_required: true
+        is_required: false
+        set:
+          - method: Create
+            ignore: true
+          - method: ReadOne
+            ignore: true
+      # The data field is of type byte because the API expects a base64 string.
+      # However, we would like to pass in a regular (multiline) string and have the controller 
+      # convert it to base64. This will make the CR's easier to use. Hence, we create a new field 
+      # that takes in a string which will be used for the configuration.  We have to manually handle 
+      # the create/read/update for this new field and also the `data` field which is not going to be 
+      # user facing.
+      alertmanager_config:
+        type: "string"
     update_operation:
       custom_method_name: customUpdateAlertManagerDefinition
     hooks:
-      sdk_create_post_build_request:
-        code: customSetAlermManagerDefinitionInput(input)
+      sdk_create_pre_build_request:
+        template_path: hooks/alert_manager_definition/sdk_create_pre_build_request.go.tpl
       sdk_create_post_set_output:
         template_path: hooks/alert_manager_definition/sdk_create_post_set_output.go.tpl
       sdk_read_one_pre_set_output:
@@ -41,8 +56,9 @@ resources:
         template_path: hooks/alert_manager_definition/sdk_read_one_post_set_output.go.tpl
     exceptions:
       terminal_codes:
-        - InvalidQueryParameter
         - ValidationError
+        - ValidationException
+        - ResourceNotFoundException
 model_name: amp 
 
 

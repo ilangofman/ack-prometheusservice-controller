@@ -6,9 +6,9 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
   creationTimestamp: null
-  name: alertmanagerdefinitions.prometheusservice.services.k8s.aws
+  name: alertmanagerdefinitions.amp.services.k8s.aws
 spec:
-  group: prometheusservice.services.k8s.aws
+  group: amp.services.k8s.aws
   names:
     kind: AlertManagerDefinition
     listKind: AlertManagerDefinitionList

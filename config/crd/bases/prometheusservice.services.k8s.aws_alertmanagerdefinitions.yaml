@@ -37,9 +37,7 @@ spec:
           spec:
             description: AlertManagerDefinitionSpec defines the desired state of AlertManagerDefinition.
             properties:
-              clientToken:
-                description: Optional, unique, case-sensitive, user-provided identifier
-                  to ensure the idempotency of the request.
+              alertmanagerConfig:
                 type: string
               data:
                 description: The alert manager definition data.
@@ -50,7 +48,6 @@ spec:
                   manager definition.
                 type: string
             required:
-            - data
             - workspaceID
             type: object
           status:

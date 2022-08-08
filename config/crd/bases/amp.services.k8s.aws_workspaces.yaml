@@ -6,21 +6,20 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
   creationTimestamp: null
-  name: alertmanagerdefinitions.prometheusservice.services.k8s.aws
+  name: workspaces.amp.services.k8s.aws
 spec:
-  group: prometheusservice.services.k8s.aws
+  group: amp.services.k8s.aws
   names:
-    kind: AlertManagerDefinition
-    listKind: AlertManagerDefinitionList
-    plural: alertmanagerdefinitions
-    singular: alertmanagerdefinition
+    kind: Workspace
+    listKind: WorkspaceList
+    plural: workspaces
+    singular: workspace
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AlertManagerDefinition is the Schema for the AlertManagerDefinitions
-          API
+        description: Workspace is the Schema for the Workspaces API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -35,24 +34,20 @@ spec:
           metadata:
             type: object
           spec:
-            description: AlertManagerDefinitionSpec defines the desired state of AlertManagerDefinition.
+            description: WorkspaceSpec defines the desired state of Workspace.
             properties:
-              alertmanagerConfig:
+              alias:
+                description: An optional user-assigned alias for this workspace. This
+                  alias is for user reference and does not need to be unique.
                 type: string
-              data:
-                description: The alert manager definition data.
-                format: byte
-                type: string
-              workspaceID:
-                description: The ID of the workspace in which to create the alert
-                  manager definition.
-                type: string
-            required:
-            - workspaceID
+              tags:
+                additionalProperties:
+                  type: string
+                description: Optional, user-provided tags for this workspace.
+                type: object
             type: object
           status:
-            description: AlertManagerDefinitionStatus defines the observed state of
-              AlertManagerDefinition
+            description: WorkspaceStatus defines the observed state of Workspace
             properties:
               ackResourceMetadata:
                 description: All CRs managed by ACK have a common `Status.ACKResourceMetadata`
@@ -115,11 +110,16 @@ spec:
                   - type
                   type: object
                 type: array
-              statusCode:
-                description: Status code of this definition.
-                type: string
-              statusReason:
-                description: The reason for failure if any.
+              status:
+                description: The status of the workspace that was just created (usually
+                  CREATING).
+                properties:
+                  statusCode:
+                    description: State of a workspace.
+                    type: string
+                type: object
+              workspaceID:
+                description: The generated ID of the workspace that was just created.
                 type: string
             type: object
         type: object

@@ -1,0 +1,20 @@
+apiVersion: prometheusservice.services.k8s.aws/v1alpha1
+kind: AlertManagerDefinition
+metadata:
+  namespace: default
+  name: $ALERT_MANAGER_DEFINITION_NAME
+spec:
+  workspaceID: $WORKSPACE_ID
+  alertmanagerConfig: |
+    alertmanager_config: |
+      route:
+        receiver: '$SNS_TOPIC_NAME'
+      receivers:
+        - name: '$SNS_TOPIC_NAME'
+          sns_configs:
+          - topic_arn: $SNS_TOPIC_ARN
+            sigv4:
+              region: us-west-2
+            attributes:
+              key: key1
+              value: value1

@@ -22,15 +22,13 @@ import (
 
 // AlertManagerDefinitionSpec defines the desired state of AlertManagerDefinition.
 type AlertManagerDefinitionSpec struct {
-	// Optional, unique, case-sensitive, user-provided identifier to ensure the
-	// idempotency of the request.
-	ClientToken *string `json:"clientToken,omitempty"`
 	// The alert manager definition data.
-	// +kubebuilder:validation:Required
-	Data []byte `json:"data"`
+	Data []byte `json:"data,omitempty"`
 	// The ID of the workspace in which to create the alert manager definition.
 	// +kubebuilder:validation:Required
 	WorkspaceID *string `json:"workspaceID"`
+
+	AlertmanagerConfig *string `json:"alertmanagerConfig,omitempty"`
 }
 
 // AlertManagerDefinitionStatus defines the observed state of AlertManagerDefinition

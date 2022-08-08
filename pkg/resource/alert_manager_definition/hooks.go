@@ -18,14 +18,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/aws-controllers-k8s/prometheusservice-controller/apis/v1alpha1"
 	ackcompare "github.com/aws-controllers-k8s/runtime/pkg/compare"
-	ackcondition "github.com/aws-controllers-k8s/runtime/pkg/condition"
 	ackrequeue "github.com/aws-controllers-k8s/runtime/pkg/requeue"
 	ackrtlog "github.com/aws-controllers-k8s/runtime/pkg/runtime/log"
 	svcsdk "github.com/aws/aws-sdk-go/service/prometheusservice"
 
-	corev1 "k8s.io/api/core/v1"
+	"github.com/aws-controllers-k8s/prometheusservice-controller/apis/v1alpha1"
 )
 
 var (
@@ -41,21 +39,16 @@ var (
 	)
 	requeueWaitWhileCreating = ackrequeue.NeededAfter(
 		ErrAlertManagerDefinitionCreating,
-		10*time.Second,
+		15*time.Second,
 	)
 	requeueWaitWhileUpdating = ackrequeue.NeededAfter(
 		ErrAlertManagerDefinitionUpdating,
 		10*time.Second,
 	)
-)
-
-var (
-	// TerminalStatuses are the status strings that are terminal states for an
-	// alert manager definition
-	TerminalStatuses = []v1alpha1.AlertManagerDefinitionStatusCode{
-		v1alpha1.AlertManagerDefinitionStatusCode_CREATION_FAILED,
-		v1alpha1.AlertManagerDefinitionStatusCode_DELETING,
-	}
+	requeueWaitWhileUpdatingWithoutError = ackrequeue.NeededAfter(
+		nil,
+		10*time.Second,
+	)
 )
 
 // alertManagerDefinitionCreating returns true if the supplied definition
@@ -98,19 +91,14 @@ func alertManagerDefinitionActive(r *resource) bool {
 	return ws == string(v1alpha1.AlertManagerDefinitionStatusCode_ACTIVE)
 }
 
-// tableHasTerminalStatus returns whether the supplied Dynamodb table is in a
-// terminal state
-func alertManagerDefinitionHasTerminalStatus(r *resource) bool {
+// alertManagerDefinitionCreating returns true if the supplied definition
+// resulted in a failed creation or failed update
+func alertManagerDefinitionStatusFailed(r *resource) bool {
 	if r.ko.Status.StatusCode == nil {
 		return false
 	}
-	ts := *r.ko.Status.StatusCode
-	for _, s := range TerminalStatuses {
-		if ts == string(s) {
-			return true
-		}
-	}
-	return false
+	ws := *r.ko.Status.StatusCode
+	return ws == string(v1alpha1.AlertManagerDefinitionStatusCode_CREATION_FAILED) || ws == string(v1alpha1.AlertManagerDefinitionStatusCode_UPDATE_FAILED)
 }
 
 func (rm *resourceManager) customUpdateAlertManagerDefinition(
@@ -119,69 +107,80 @@ func (rm *resourceManager) customUpdateAlertManagerDefinition(
 	latest *resource,
 	delta *ackcompare.Delta,
 ) (*resource, error) {
-
 	var err error
 	rlog := ackrtlog.FromContext(ctx)
 	exit := rlog.Trace("rm.customUpdateAlertManagerDefinition")
 	defer exit(err)
 
-	println("ILAN --- -----------ENTERING UPDATE")
-
-	if alertManagerDefinitionHasTerminalStatus(latest) {
-		msg := "Alert Manager Definition is in '" + *latest.ko.Status.StatusCode + "' status"
-		ackcondition.SetTerminal(desired, corev1.ConditionTrue, &msg, nil)
-		ackcondition.SetSynced(desired, corev1.ConditionTrue, nil, nil)
-		return desired, nil
+	// Check if the state is being currently created, updated or deleted.
+	// For failed states (create & update) and active states, the user can
+	// still update the alert manager definition.
+	if alertManagerDefinitionCreating(latest) {
+		return desired, requeueWaitWhileCreating
+	}
+	if alertManagerDefinitionUpdating(latest) {
+		return desired, requeueWaitWhileUpdating
+	}
+	if alertManagerDefinitionDeleting(latest) {
+		return desired, requeueWaitWhileDeleting
 	}
 
-	// If status=update/create failed should still be able to create it??
-
-	// Check if the state is active before updated
-	if !alertManagerDefinitionActive(latest) {
-		msg := "Cannot update alert manager definition as current status=" + string(*latest.ko.Status.StatusCode)
-		ackcondition.SetSynced(desired, corev1.ConditionFalse, &msg, nil)
-		return desired, ackrequeue.NeededAfter(
-			errors.New(msg),
-			ackrequeue.DefaultRequeueAfterDuration,
-		)
+	if delta.DifferentAt("Spec.AlertmanagerConfig") {
+		err = rm.customUpdateAlertManagerDefinitionData(ctx, desired)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	// maybe not handled by us? Should be called from the runtime?
-	// desired = rm.handleImmutableFieldsChangedCondition(desired, delta)
+	readOneLatest, err := rm.ReadOne(ctx, desired)
+	if err != nil {
+		return nil, err
+	}
+	r := rm.concreteResource(readOneLatest)
+
+	return r, nil
+
+}
+func (rm *resourceManager) customUpdateAlertManagerDefinitionData(
+	ctx context.Context,
+	desired *resource,
+) error {
+
+	// Convert the string version of the definition to a byte slice
+	// because the API expects a base64 encoding. The conversion to base64
+	// is handled automatically by k8s.
+	if desired.ko.Spec.AlertmanagerConfig != nil {
+		desired.ko.Spec.Data = []byte(*desired.ko.Spec.AlertmanagerConfig)
+	}
 
 	input := &svcsdk.PutAlertManagerDefinitionInput{
 		Data:        desired.ko.Spec.Data,
 		WorkspaceId: desired.ko.Spec.WorkspaceID,
 	}
 
-	var resp *svcsdk.PutAlertManagerDefinitionOutput
-	resp, err = rm.sdkapi.PutAlertManagerDefinitionWithContext(ctx, input)
+	resp, err := rm.sdkapi.PutAlertManagerDefinitionWithContext(ctx, input)
 	rm.metrics.RecordAPICall("UPDATE", "putAlertManagerDefinition", err)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	ko := desired.ko.DeepCopy()
-
-	rm.setStatusDefaults(ko)
 
 	// Check the status of the alert manager definition
 	if resp.Status != nil {
 		if resp.Status.StatusCode != nil {
-			ko.Status.StatusCode = resp.Status.StatusCode
+			desired.ko.Status.StatusCode = resp.Status.StatusCode
 		} else {
-			ko.Status.StatusCode = nil
+			desired.ko.Status.StatusCode = nil
 		}
 		if resp.Status.StatusReason != nil {
-			ko.Status.StatusReason = resp.Status.StatusReason
+			desired.ko.Status.StatusReason = resp.Status.StatusReason
 		} else {
-			ko.Status.StatusReason = nil
+			desired.ko.Status.StatusReason = nil
 		}
 	} else {
-		ko.Status.StatusCode = nil
-		ko.Status.StatusReason = nil
+		desired.ko.Status.StatusCode = nil
+		desired.ko.Status.StatusReason = nil
 
 	}
 
-	return &resource{ko}, nil
+	return nil
 }

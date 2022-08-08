@@ -18,6 +18,7 @@ package alert_manager_definition
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -25,6 +26,7 @@ import (
 	ackcompare "github.com/aws-controllers-k8s/runtime/pkg/compare"
 	ackcondition "github.com/aws-controllers-k8s/runtime/pkg/condition"
 	ackerr "github.com/aws-controllers-k8s/runtime/pkg/errors"
+	ackrequeue "github.com/aws-controllers-k8s/runtime/pkg/requeue"
 	ackrtlog "github.com/aws-controllers-k8s/runtime/pkg/runtime/log"
 	"github.com/aws/aws-sdk-go/aws"
 	svcsdk "github.com/aws/aws-sdk-go/service/prometheusservice"
@@ -45,6 +47,8 @@ var (
 	_ = &ackerr.NotFound
 	_ = &ackcondition.NotManagedMessage
 	_ = &reflect.Value{}
+	_ = fmt.Sprintf("")
+	_ = &ackrequeue.NoRequeue{}
 )
 
 // sdkFind returns SDK-specific information about a supplied resource
@@ -54,7 +58,9 @@ func (rm *resourceManager) sdkFind(
 ) (latest *resource, err error) {
 	rlog := ackrtlog.FromContext(ctx)
 	exit := rlog.Trace("rm.sdkFind")
-	defer exit(err)
+	defer func() {
+		exit(err)
+	}()
 	// If any required fields in the input shape are missing, AWS resource is
 	// not created yet. Return NotFound here to indicate to callers that the
 	// resource isn't yet created.
@@ -80,6 +86,7 @@ func (rm *resourceManager) sdkFind(
 	// Merge in the information we read from the API call above to the copy of
 	// the original Kubernetes object we passed to the function
 	ko := r.ko.DeepCopy()
+
 	// Check the status of the alert manager definition
 	if resp.AlertManagerDefinition.Status != nil {
 		if resp.AlertManagerDefinition.Status.StatusCode != nil {
@@ -98,19 +105,52 @@ func (rm *resourceManager) sdkFind(
 
 	}
 
+	// When adding an invalid alert manager configuration, the AMP API has different behaviour
+	// for different kinds of invalid input. For some invalid input, the API returns an error
+	// (e.g. ValidationException) instantly and we set the controller to terminal state. The specified
+	// spec remains the same.
+	// For other invalid inputs, the API first returns a 200, and proceeds to create the configuration but
+	// ultimately fails after around a minute because of an invalid config. In this case, the
+
+	// If there was a failed creation or failed udpate of the alert manager configuration
+	// then the API behaviour will be
+	// We set the resource to terminal state because it will require human intervention to resolve
+	//
+
+	// So for failed cases, we leave the spec to be what the user desires.
+
+	// IF STATUS FAILED AND NOT NOT NOT already terminal status then only do this
+	if (alertManagerDefinitionStatusFailed(&resource{ko}) && !alertManagerDefinitionStatusFailed(r)) {
+		msg := "Alert Manager Definition is in '" + *ko.Status.StatusCode + "' status"
+		ackcondition.SetTerminal(&resource{ko}, corev1.ConditionTrue, &msg, nil)
+		ackcondition.SetSynced(&resource{ko}, corev1.ConditionTrue, nil, nil)
+
+		rm.setStatusDefaults(ko)
+		return &resource{ko}, nil
+
+	}
+
+	// The data field stores the base64 encoding of the alert manager definition.
+	// However, to make the CR's more user friendly, we convert the base64 encoding to a
+	// string. We store it in a custom created field.
 	if resp.AlertManagerDefinition.Data != nil {
-		ko.Spec.Data = resp.AlertManagerDefinition.Data
+		// Convert the base64 byte array to a human-readable string
+		alertManagerDefinitionDataString := string(resp.AlertManagerDefinition.Data)
+		ko.Spec.AlertmanagerConfig = &alertManagerDefinitionDataString
+		if err != nil {
+			return nil, err
+		}
+		// Remove the data field as it is not user facing
+		resp.AlertManagerDefinition.Data = nil
 	} else {
-		ko.Spec.Data = nil
+		ko.Spec.AlertmanagerConfig = nil
 	}
 
 	rm.setStatusDefaults(ko)
 
-	if alertManagerDefinitionCreating(&resource{ko}) {
-		return &resource{ko}, requeueWaitWhileCreating
-	}
+	// If in the middle of updating, requeue again
 	if alertManagerDefinitionUpdating(&resource{ko}) {
-		return &resource{ko}, requeueWaitWhileUpdating
+		return &resource{ko}, requeueWaitWhileUpdatingWithoutError
 	}
 
 	return &resource{ko}, nil
@@ -149,12 +189,21 @@ func (rm *resourceManager) sdkCreate(
 ) (created *resource, err error) {
 	rlog := ackrtlog.FromContext(ctx)
 	exit := rlog.Trace("rm.sdkCreate")
-	defer exit(err)
+	defer func() {
+		exit(err)
+	}()
+
+	// Convert the string version of the definition to a byte slice
+	// because the API expects a base64 encoding. The conversion to base64
+	// is handled automatically by k8s.
+	if desired.ko.Spec.AlertmanagerConfig != nil {
+		desired.ko.Spec.Data = []byte(*desired.ko.Spec.AlertmanagerConfig)
+	}
+
 	input, err := rm.newCreateRequestPayload(ctx, desired)
 	if err != nil {
 		return nil, err
 	}
-	customSetAlermManagerDefinitionInput(input)
 
 	var resp *svcsdk.CreateAlertManagerDefinitionOutput
 	_ = resp
@@ -200,9 +249,6 @@ func (rm *resourceManager) newCreateRequestPayload(
 ) (*svcsdk.CreateAlertManagerDefinitionInput, error) {
 	res := &svcsdk.CreateAlertManagerDefinitionInput{}
 
-	if r.ko.Spec.ClientToken != nil {
-		res.SetClientToken(*r.ko.Spec.ClientToken)
-	}
 	if r.ko.Spec.Data != nil {
 		res.SetData(r.ko.Spec.Data)
 	}
@@ -231,7 +277,9 @@ func (rm *resourceManager) sdkDelete(
 ) (latest *resource, err error) {
 	rlog := ackrtlog.FromContext(ctx)
 	exit := rlog.Trace("rm.sdkDelete")
-	defer exit(err)
+	defer func() {
+		exit(err)
+	}()
 	input, err := rm.newDeleteRequestPayload(r)
 	if err != nil {
 		return nil, err
@@ -250,9 +298,6 @@ func (rm *resourceManager) newDeleteRequestPayload(
 ) (*svcsdk.DeleteAlertManagerDefinitionInput, error) {
 	res := &svcsdk.DeleteAlertManagerDefinitionInput{}
 
-	if r.ko.Spec.ClientToken != nil {
-		res.SetClientToken(*r.ko.Spec.ClientToken)
-	}
 	if r.ko.Spec.WorkspaceID != nil {
 		res.SetWorkspaceId(*r.ko.Spec.WorkspaceID)
 	}
@@ -367,8 +412,9 @@ func (rm *resourceManager) terminalAWSError(err error) bool {
 		return false
 	}
 	switch awsErr.Code() {
-	case "InvalidQueryParameter",
-		"ValidationError":
+	case "ValidationError",
+		"ValidationException",
+		"ResourceNotFoundException":
 		return true
 	default:
 		return false
@@ -380,52 +426,9 @@ func (rm *resourceManager) getImmutableFieldChanges(
 	delta *ackcompare.Delta,
 ) []string {
 	var fields []string
-	if delta.DifferentAt("workspaceID") {
+	if delta.DifferentAt("Spec.workspaceID") {
 		fields = append(fields, "workspaceID")
 	}
 
 	return fields
-}
-
-// handleImmutableFieldsChangedCondition validates the immutable fields and set appropriate condition
-func (rm *resourceManager) handleImmutableFieldsChangedCondition(
-	r *resource,
-	delta *ackcompare.Delta,
-) *resource {
-
-	fields := rm.getImmutableFieldChanges(delta)
-	ko := r.ko.DeepCopy()
-	var advisoryCondition *ackv1alpha1.Condition = nil
-	for _, condition := range ko.Status.Conditions {
-		if condition.Type == ackv1alpha1.ConditionTypeAdvisory {
-			advisoryCondition = condition
-			break
-		}
-	}
-
-	// Remove the advisory condition if issue is no longer present
-	if len(fields) == 0 && advisoryCondition != nil {
-		var newConditions []*ackv1alpha1.Condition
-		for _, condition := range ko.Status.Conditions {
-			if condition.Type != ackv1alpha1.ConditionTypeAdvisory {
-				newConditions = append(newConditions, condition)
-			}
-		}
-		ko.Status.Conditions = newConditions
-	}
-
-	if len(fields) > 0 {
-		if advisoryCondition == nil {
-			advisoryCondition = &ackv1alpha1.Condition{
-				Type: ackv1alpha1.ConditionTypeAdvisory,
-			}
-			ko.Status.Conditions = append(ko.Status.Conditions, advisoryCondition)
-		}
-
-		advisoryCondition.Status = corev1.ConditionTrue
-		message := "Immutable Spec fields have been modified : " + strings.Join(fields, ",")
-		advisoryCondition.Message = &message
-	}
-
-	return &resource{ko}
 }

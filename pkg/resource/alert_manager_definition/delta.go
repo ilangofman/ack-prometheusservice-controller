@@ -41,13 +41,6 @@ func newResourceDelta(
 		return delta
 	}
 
-	if ackcompare.HasNilDifference(a.ko.Spec.ClientToken, b.ko.Spec.ClientToken) {
-		delta.Add("Spec.ClientToken", a.ko.Spec.ClientToken, b.ko.Spec.ClientToken)
-	} else if a.ko.Spec.ClientToken != nil && b.ko.Spec.ClientToken != nil {
-		if *a.ko.Spec.ClientToken != *b.ko.Spec.ClientToken {
-			delta.Add("Spec.ClientToken", a.ko.Spec.ClientToken, b.ko.Spec.ClientToken)
-		}
-	}
 	if !bytes.Equal(a.ko.Spec.Data, b.ko.Spec.Data) {
 		delta.Add("Spec.Data", a.ko.Spec.Data, b.ko.Spec.Data)
 	}
@@ -56,6 +49,13 @@ func newResourceDelta(
 	} else if a.ko.Spec.WorkspaceID != nil && b.ko.Spec.WorkspaceID != nil {
 		if *a.ko.Spec.WorkspaceID != *b.ko.Spec.WorkspaceID {
 			delta.Add("Spec.WorkspaceID", a.ko.Spec.WorkspaceID, b.ko.Spec.WorkspaceID)
+		}
+	}
+	if ackcompare.HasNilDifference(a.ko.Spec.AlertmanagerConfig, b.ko.Spec.AlertmanagerConfig) {
+		delta.Add("Spec.AlertmanagerConfig", a.ko.Spec.AlertmanagerConfig, b.ko.Spec.AlertmanagerConfig)
+	} else if a.ko.Spec.AlertmanagerConfig != nil && b.ko.Spec.AlertmanagerConfig != nil {
+		if *a.ko.Spec.AlertmanagerConfig != *b.ko.Spec.AlertmanagerConfig {
+			delta.Add("Spec.AlertmanagerConfig", a.ko.Spec.AlertmanagerConfig, b.ko.Spec.AlertmanagerConfig)
 		}
 	}
 
