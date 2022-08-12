@@ -1,1 +1,1 @@
-arn:aws:iam::aws:policy/AmazonPrometheusConsoleFullAccess
+arn:aws:iam::aws:policy/AmazonPrometheusFullAccess
